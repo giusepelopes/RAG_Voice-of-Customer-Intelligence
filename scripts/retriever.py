@@ -6,6 +6,9 @@ import chromadb
 from google import genai
 from sentence_transformers import CrossEncoder
 
+with open("../gemini_api_key.txt", 'r') as file:
+    os.environ["GEMINI_API_KEY"] = file.read()
+
 rerank_model = CrossEncoder('BAAI/bge-reranker-base')
 
 def retrieve_evidences(collection, user_query, n_starting_candidates=15, n_final=5):
