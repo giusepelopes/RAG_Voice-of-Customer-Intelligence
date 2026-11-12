@@ -1,6 +1,24 @@
 # !pip install google-genai
 
 import os
+import warnings
+import logging
+
+##### Configurações adicionais de logging e váriaveis de ambiente para deixar o terminal mais limpo quando executando.
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+logging.getLogger("torch").setLevel(logging.ERROR)
+logging.getLogger("chromadb").setLevel(logging.ERROR)
+#####
+
 import time
 import json
 import chromadb
@@ -12,25 +30,40 @@ with open("../gemini_api_key.txt", 'r') as file:
 
 rerank_model = CrossEncoder('BAAI/bge-reranker-base')
 
+filter_dict = {
+    "filtra_nota": {
+        "coluna": "review_score",
+        "min": "min_score",
+        "max": "max_score"
+        } ,
+    "filtra_valor": {
+        "coluna": "payment_value",
+        "min": "min_value",
+        "max": "max_value"
+    }
+}
+
 def get_query_intent(user_query):
 
     client = genai.Client()
     
     prompt_parser = (
         "Você é um classificador de intenções para um sistema de e-commerce.\n"
-        "Analise a pergunta do usuário e determine se há alguma restrição explícita ou implícita de nota de avaliação.\n"
-        "As notas variam de 1 a 5.\n\n"
+        "Analise a pergunta do usuário e determine se há alguma restrição explícita ou implícita de nota de avaliação ou de valor da compra.\n"
+        "As notas variam de 1 a 5. Para valores, considere:\n"
+        "- Compras baratas / baixo valor: até 50.\n"
+        "- Compras caras / alto valor: acima de 500.\n"
+        "- Se houver um valor específico (ex: 'acima de 150 reais'), extraia o número correspondente.\n\n"
         f"Pergunta: '{user_query}'\n\n"
         "Retorne APENAS um objeto JSON válido (sem markdown, sem crases) com o seguinte formato:\n"
         "{\n"
         '  "filtra_nota": true ou false,\n'
         '  "min_score": 1 a 5 (ou null se não houver restrição),\n'
-        '  "max_score": 1 a 5 (ou null se não houver restrição)\n'
+        '  "max_score": 1 a 5 (ou null se não houver restrição),\n'
+        '  "filtra_valor": true ou false,\n'
+        '  "min_value": maior que zero e menor que max_value (ou null se não houver restrição),\n'
+        '  "max_value": maior que min_value (ou null se não houver restrição)\n'
         "}\n"
-        "Exemplos:\n"
-        "- 'principais problemas nas notas baixas' -> {\"filtra_nota\": true, \"min_score\": 1, \"max_score\": 2}\n"
-        "- 'o que os clientes elogiam' -> {\"filtra_nota\": true, \"min_score\": 4, \"max_score\": 5}\n"
-        "- 'como foi a entrega' -> {\"filtra_nota\": false, \"min_score\": null, \"max_score\": null}"
     )
     
     try:
@@ -43,23 +76,34 @@ def get_query_intent(user_query):
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         data_filter = json.loads(clean_text)
         
-        # Converte para o formato de operador do ChromaDB.
-        if data_filter.get("filtra_nota"):
-            min_s = data_filter.get("min_score")
-            max_s = data_filter.get("max_score")
-            
-            if min_s and max_s:
-                return {"$and": [{"review_score": {"$gte": min_s}}, {"review_score": {"$lte": max_s}}]}
-            elif min_s:
-                return {"review_score": {"$gte": min_s}}
-            elif max_s:
-                return {"review_score": {"$lte": max_s}}
+        identified_filters = []
+        
+        for key, value in filter_dict.items():
+            # Converte para o formato de operador do ChromaDB.
+            if data_filter.get(key):
+                data_column = value['coluna']
+                min_s = data_filter.get(value['min'])
+                max_s = data_filter.get(value['max'])
                 
+                if min_s and max_s:
+                    identified_filters.append({"$and": [{data_column: {"$gte": min_s}}, {data_column: {"$lte": max_s}}]})
+                elif min_s:
+                    identified_filters.append({data_column: {"$gte": min_s}})
+                elif max_s:
+                    identified_filters.append({data_column: {"$lte": max_s}})
+        
+        if len(identified_filters) > 1:
+            dynamic_filter = {"$and": identified_filters}
+        elif len(identified_filters) == 1:
+            dynamic_filter = identified_filters[0]
+        else:
+            dynamic_filter = None
+            
     except Exception as e:
         print(f"Erro ao extrair intenção via LLM: {e}. Seguindo sem filtro rígido.")
     
     # Caso não seja identificada restrição, ou ocorra falha na request ao LLM.
-    return None
+    return dynamic_filter
 
 def retrieve_evidences(collection, user_query, n_starting_candidates=15, n_final=5):
     
@@ -93,6 +137,7 @@ def retrieve_evidences(collection, user_query, n_starting_candidates=15, n_final
             "evidencia_id": i + 1,
             "order_id": meta.get('order_id'),
             "review_score": meta.get('review_score'),
+            "payment_value": meta.get('payment_value'),
             "purchase_date": meta.get('purchase_date'),
             "rerank_score": float(score)
         })
@@ -111,7 +156,7 @@ def get_llm_response(complete_prompt):
     
     while attempt < max_retries:
         try:
-            response = client.models.generate_content(model='gemini-3.6-flash',contents=complete_prompt)
+            response = client.models.generate_content(model='gemini-3.5-flash-lite',contents=complete_prompt)
             return response.text
             
         except Exception as e:
@@ -159,7 +204,7 @@ def get_query_reply(user_query, n_results=5):
         print(f"Não foi possível obter uma resposta para a pergunta feita. Erro: {e}")
     
 
-pergunta = "O que os clientes relatam sobre problemas relacionados à entrega?"
+pergunta = "Quais são as reclamações mais comuns entre pedidos bem avaliados?"
 
 resposta, fontes = get_query_reply(pergunta, n_results=50)
 
@@ -167,4 +212,4 @@ print("=== RESPOSTA DO RAG ===")
 print(resposta)
 print("\n=== EVIDÊNCIAS UTILIZADAS ===")
 for fonte in fontes:
-    print(f"- Evidência {fonte['evidencia_id']}: Pedido {fonte['order_id']} | Nota: {fonte['review_score']} estrelas | Score: {fonte['rerank_score']}")
+    print(f"- Evidência {fonte['evidencia_id']}: Pedido {fonte['order_id']} | Nota: {fonte['review_score']} estrelas | Score: {fonte['rerank_score']} | Valor: R$ {fonte['payment_value']}")

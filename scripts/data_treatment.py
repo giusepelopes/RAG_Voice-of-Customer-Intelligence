@@ -22,6 +22,7 @@ def create_review_document(row: pd.Series) -> str:
             f"Data da Compra: {row['order_purchase_timestamp']} | "
             f"Data Prevista para Entrega: {row['order_estimated_delivery_date']} | "
             f"Data de Entrega: {row['order_delivered_customer_date']} | "
+            f"Valor da compra: R$ {row['payment_value']} | "
             f"Comentário: {row['clean_message']}")
     return text
 
@@ -31,6 +32,7 @@ def get_treated_data() -> pd.DataFrame:
     try:
         df_reviews = pd.read_csv('../data/olist_order_reviews_dataset.csv')
         df_orders = pd.read_csv('../data/olist_orders_dataset.csv')
+        df_payments = pd.read_csv('../data/olist_order_payments_dataset.csv')
     except Exception as e:
         print(f"[DTREAT:ERR] Falha na leitura dos arquivos de entrada: {str(e)}")
         raise
@@ -39,15 +41,20 @@ def get_treated_data() -> pd.DataFrame:
 
     print("[DTREAT:LOG] Total de avaliações original:", len(df_reviews))
 
-    df_merged = pd.merge(df_reviews, df_orders[['order_id', 'order_purchase_timestamp', 'order_estimated_delivery_date', 'order_delivered_customer_date']], on='order_id', how='inner')
+    df_merged_orders = pd.merge(df_reviews, df_orders[['order_id', 'order_purchase_timestamp', 'order_estimated_delivery_date', 'order_delivered_customer_date']], on='order_id', how='inner')
 
     # Aplica função de limpeza ao texto no campo de mensagem da review.
-    df_merged['clean_message'] = df_merged['review_comment_message'].apply(clean_review_text)
+    df_merged_orders['clean_message'] = df_merged_orders['review_comment_message'].apply(clean_review_text)
 
     # Remove avaliações vazias ou com frases que trazem pouco contexto útil, como "ok" ou "bom".
-    df_merged = df_merged[df_merged['clean_message'].str.len() > 3].copy()
+    df_merged_orders = df_merged_orders[df_merged_orders['clean_message'].str.len() > 3].copy()
 
-    print("[DTREAT:LOG] Total de avaliações após limpeza:", len(df_merged))
+    print("[DTREAT:LOG] Total de avaliações após limpeza:", len(df_merged_orders))
+
+    df_payments = df_payments[['order_id', 'payment_value']].groupby('order_id').agg('sum').reset_index()
+    df_pay_enrich = pd.merge(df_merged_orders, df_payments, on='order_id', how='left')
+
+    df_merged = df_pay_enrich
 
     # Aplicar a formatação criando uma coluna de texto estruturado
     df_merged['rag_document'] = df_merged.apply(create_review_document, axis=1)

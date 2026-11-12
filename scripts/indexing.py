@@ -40,6 +40,7 @@ try:
         metadados.append({
             "review_score": int(row['review_score']),
             "order_id": str(row['order_id']),
+            "payment_value": float(row['payment_value']),
             "purchase_date": str(row['order_purchase_timestamp'])
         })
     
