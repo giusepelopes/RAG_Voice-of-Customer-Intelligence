@@ -23,6 +23,7 @@ def create_review_document(row: pd.Series) -> str:
             f"Data Prevista para Entrega: {row['order_estimated_delivery_date']} | "
             f"Data de Entrega: {row['order_delivered_customer_date']} | "
             f"Valor da compra: R$ {row['payment_value']} | "
+            f"Estado: {row['customer_state']}"
             f"Comentário: {row['clean_message']}")
     return text
 
@@ -33,6 +34,7 @@ def get_treated_data() -> pd.DataFrame:
         df_reviews = pd.read_csv('../data/olist_order_reviews_dataset.csv')
         df_orders = pd.read_csv('../data/olist_orders_dataset.csv')
         df_payments = pd.read_csv('../data/olist_order_payments_dataset.csv')
+        df_customers = pd.read_csv('../data/olist_customers_dataset.csv')
     except Exception as e:
         print(f"[DTREAT:ERR] Falha na leitura dos arquivos de entrada: {str(e)}")
         raise
@@ -41,7 +43,9 @@ def get_treated_data() -> pd.DataFrame:
 
     print("[DTREAT:LOG] Total de avaliações original:", len(df_reviews))
 
-    df_merged_orders = pd.merge(df_reviews, df_orders[['order_id', 'order_purchase_timestamp', 'order_estimated_delivery_date', 'order_delivered_customer_date']], on='order_id', how='inner')
+    df_orders_cust = pd.merge(df_orders, df_customers[['customer_id', 'customer_state']], on='customer_id', how='inner')
+
+    df_merged_orders = pd.merge(df_reviews, df_orders_cust[['order_id', 'customer_state', 'order_purchase_timestamp', 'order_estimated_delivery_date', 'order_delivered_customer_date']], on='order_id', how='inner')
 
     # Aplica função de limpeza ao texto no campo de mensagem da review.
     df_merged_orders['clean_message'] = df_merged_orders['review_comment_message'].apply(clean_review_text)

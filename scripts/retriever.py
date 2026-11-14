@@ -40,6 +40,10 @@ filter_dict = {
         "coluna": "payment_value",
         "min": "min_value",
         "max": "max_value"
+    },
+    "filtra_estado": {
+        "coluna": "customer_state",
+        "valor": "estado"
     }
 }
 
@@ -49,11 +53,13 @@ def get_query_intent(user_query):
     
     prompt_parser = (
         "Você é um classificador de intenções para um sistema de e-commerce.\n"
-        "Analise a pergunta do usuário e determine se há alguma restrição explícita ou implícita de nota de avaliação ou de valor da compra.\n"
+        "Analise a pergunta do usuário e determine se há alguma restrição explícita ou implícita de nota de avaliação, valor da compra ou de estado/região do comprador..\n"
         "As notas variam de 1 a 5. Para valores, considere:\n"
         "- Compras baratas / baixo valor: até 50.\n"
         "- Compras caras / alto valor: acima de 500.\n"
         "- Se houver um valor específico (ex: 'acima de 150 reais'), extraia o número correspondente.\n\n"
+        "Para estados, extraia a sigla de duas letras em maiúsculo (ex: SP, RJ, MG), e retorne uma lista contendo a sigla correspondente. Se citar o nome completo, converta para a sigla correspondente.\n\n"
+        "Para perguntas que envolvam regiões do Brasil, retorne uma lista com as siglas de duas letras em maiúsculo que compõem a região correspondente.\n\n"
         f"Pergunta: '{user_query}'\n\n"
         "Retorne APENAS um objeto JSON válido (sem markdown, sem crases) com o seguinte formato:\n"
         "{\n"
@@ -63,6 +69,8 @@ def get_query_intent(user_query):
         '  "filtra_valor": true ou false,\n'
         '  "min_value": maior que zero e menor que max_value (ou null se não houver restrição),\n'
         '  "max_value": maior que min_value (ou null se não houver restrição)\n'
+        '  "filtra_estado": true ou false,\n'
+        '  "estado": ["SIGLA_DO_ESTADO"] (ou null)\n'
         "}\n"
     )
     
@@ -79,18 +87,21 @@ def get_query_intent(user_query):
         identified_filters = []
         
         for key, value in filter_dict.items():
-            # Converte para o formato de operador do ChromaDB.
             if data_filter.get(key):
                 data_column = value['coluna']
-                min_s = data_filter.get(value['min'])
-                max_s = data_filter.get(value['max'])
-                
-                if min_s and max_s:
-                    identified_filters.append({"$and": [{data_column: {"$gte": min_s}}, {data_column: {"$lte": max_s}}]})
-                elif min_s:
-                    identified_filters.append({data_column: {"$gte": min_s}})
-                elif max_s:
-                    identified_filters.append({data_column: {"$lte": max_s}})
+                if data_column == 'customer_state':
+                    identified_filters.append({data_column: {"$in": data_filter.get(value['valor'])}})
+                else:
+                    
+                    min_s = data_filter.get(value['min'])
+                    max_s = data_filter.get(value['max'])
+                    
+                    if min_s and max_s:
+                        identified_filters.append({"$and": [{data_column: {"$gte": min_s}}, {data_column: {"$lte": max_s}}]})
+                    elif min_s:
+                        identified_filters.append({data_column: {"$gte": min_s}})
+                    elif max_s:
+                        identified_filters.append({data_column: {"$lte": max_s}})
         
         if len(identified_filters) > 1:
             dynamic_filter = {"$and": identified_filters}
@@ -138,6 +149,7 @@ def retrieve_evidences(collection, user_query, n_starting_candidates=15, n_final
             "order_id": meta.get('order_id'),
             "review_score": meta.get('review_score'),
             "payment_value": meta.get('payment_value'),
+            "customer_state": meta.get('customer_state'),
             "purchase_date": meta.get('purchase_date'),
             "rerank_score": float(score)
         })
@@ -189,7 +201,9 @@ def get_query_reply(user_query, n_results=5):
         "2. Sempre cite as evidências correspondentes (ex: citando a Evidência [X], a nota ou o período) para sustentar seus argumentos.\n"
         "3. Caso as evidências recuperadas sejam insuficientes, inconclusivas ou a pergunta esteja totalmente fora do escopo "
         "da base de conhecimento, responda obrigatoriamente: "
-        "'Não possuo informações suficientes nas avaliações de clientes para responder a esta pergunta com segurança.'"
+        "'Não possuo informações suficientes nas avaliações de clientes para responder a esta pergunta com segurança.'\n"
+        "Instruções adicionais:\n"
+        "Considere de baixo valor compras até 50, e compras de alto valor acima de 500."
     )
     
     complete_prompt = (
@@ -204,7 +218,7 @@ def get_query_reply(user_query, n_results=5):
         print(f"Não foi possível obter uma resposta para a pergunta feita. Erro: {e}")
     
 
-pergunta = "Quais são as reclamações mais comuns entre pedidos bem avaliados?"
+pergunta = "Como os clientes do sudeste avaliam a experiência de compra?"
 
 resposta, fontes = get_query_reply(pergunta, n_results=50)
 
@@ -212,4 +226,4 @@ print("=== RESPOSTA DO RAG ===")
 print(resposta)
 print("\n=== EVIDÊNCIAS UTILIZADAS ===")
 for fonte in fontes:
-    print(f"- Evidência {fonte['evidencia_id']}: Pedido {fonte['order_id']} | Nota: {fonte['review_score']} estrelas | Score: {fonte['rerank_score']} | Valor: R$ {fonte['payment_value']}")
+    print(f"- Evidência {fonte['evidencia_id']}: Pedido {fonte['order_id']} | Nota: {fonte['review_score']} estrelas | Estado: {fonte['customer_state']} | Valor: R$ {fonte['payment_value']}")
