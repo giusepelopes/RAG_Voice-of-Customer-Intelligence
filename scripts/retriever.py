@@ -168,7 +168,7 @@ def get_llm_response(complete_prompt):
     
     while attempt < max_retries:
         try:
-            response = client.models.generate_content(model='gemini-3.5-flash-lite',contents=complete_prompt)
+            response = client.models.generate_content(model='gemini-3.5-flash',contents=complete_prompt)
             return response.text
             
         except Exception as e:
@@ -182,7 +182,7 @@ def get_llm_response(complete_prompt):
             time.sleep(sleep_time)
             sleep_time *= 2
 
-def get_query_reply(user_query, n_results=5):
+def get_query_reply(user_query, n_results):
     chroma_client = chromadb.PersistentClient(path="../chroma_db_reviews")
     collection = chroma_client.get_collection(name="reviews_bertimbau")
     
@@ -198,7 +198,7 @@ def get_query_reply(user_query, n_results=5):
         "nas avaliações de clientes fornecidas no contexto abaixo.\n\n"
         "Diretrizes obrigatórias:\n"
         "1. Não invente fatos, opiniões ou dados que não estejam amparados pelas evidências.\n"
-        "2. Sempre cite as evidências correspondentes (ex: citando a Evidência [X], a nota ou o período) para sustentar seus argumentos.\n"
+        "2. Sempre cite as evidências correspondentes (ex: citando a Evidência [X], assim como os metadados relevantes no contexto da pergunta) para sustentar seus argumentos.\n"
         "3. Caso as evidências recuperadas sejam insuficientes, inconclusivas ou a pergunta esteja totalmente fora do escopo "
         "da base de conhecimento, responda obrigatoriamente: "
         "'Não possuo informações suficientes nas avaliações de clientes para responder a esta pergunta com segurança.'\n"
@@ -217,13 +217,3 @@ def get_query_reply(user_query, n_results=5):
     except Exception as e:
         print(f"Não foi possível obter uma resposta para a pergunta feita. Erro: {e}")
     
-
-pergunta = "Como os clientes do sudeste avaliam a experiência de compra?"
-
-resposta, fontes = get_query_reply(pergunta, n_results=50)
-
-print("=== RESPOSTA DO RAG ===")
-print(resposta)
-print("\n=== EVIDÊNCIAS UTILIZADAS ===")
-for fonte in fontes:
-    print(f"- Evidência {fonte['evidencia_id']}: Pedido {fonte['order_id']} | Nota: {fonte['review_score']} estrelas | Estado: {fonte['customer_state']} | Valor: R$ {fonte['payment_value']}")
