@@ -25,9 +25,6 @@ import chromadb
 from google import genai
 from sentence_transformers import CrossEncoder
 
-with open("../gemini_api_key.txt", 'r') as file:
-    os.environ["GEMINI_API_KEY"] = file.read()
-
 rerank_model = CrossEncoder('BAAI/bge-reranker-base')
 
 filter_dict = {
@@ -113,7 +110,6 @@ def get_query_intent(user_query):
     except Exception as e:
         print(f"Erro ao extrair intenção via LLM: {e}. Seguindo sem filtro rígido.")
     
-    # Caso não seja identificada restrição, ou ocorra falha na request ao LLM.
     return dynamic_filter
 
 def retrieve_evidences(collection, user_query, n_starting_candidates=15, n_final=5):
@@ -183,6 +179,14 @@ def get_llm_response(complete_prompt):
             sleep_time *= 2
 
 def get_query_reply(user_query, n_results):
+    
+    if not os.environ.get("GEMINI_API_KEY"):
+        try:
+            with open("../gemini_api_key.txt", 'r') as file:
+                os.environ["GEMINI_API_KEY"] = file.read().strip()
+        except FileNotFoundError:
+            print(f"Chave para API Gemini não encontrada. Erro: {e}")
+    
     chroma_client = chromadb.PersistentClient(path="../chroma_db_reviews")
     collection = chroma_client.get_collection(name="reviews_bertimbau")
     
@@ -216,4 +220,3 @@ def get_query_reply(user_query, n_results):
         return get_llm_response(complete_prompt), audit_evidences
     except Exception as e:
         print(f"Não foi possível obter uma resposta para a pergunta feita. Erro: {e}")
-    

@@ -49,8 +49,7 @@ try:
     # e para que seja possível fornecer updates do progresso.
     print(f"[IDX:LOG] Iniciando indexação em batches.")
     batch_size = 5000
-    #for i in range(0, len(documents), batch_size):
-    for i in range(0, 5001, batch_size):
+    for i in range(0, len(documents), batch_size):
         end_idx = min(i + batch_size, len(documents))
         
         collection.add(ids=ids[i:end_idx], metadatas=metadados[i:end_idx], documents=documents[i:end_idx])
