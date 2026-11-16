@@ -187,7 +187,10 @@ def get_query_reply(user_query, n_results):
         except FileNotFoundError:
             print(f"Chave para API Gemini não encontrada. Erro: {e}")
     
-    chroma_client = chromadb.PersistentClient(path="../chroma_db_reviews")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.abspath(os.path.join(current_dir, "../chroma_db_reviews"))
+    
+    chroma_client = chromadb.PersistentClient(path=db_path)
     collection = chroma_client.get_collection(name="reviews_bertimbau")
     
     context_text, audit_evidences = retrieve_evidences(collection, user_query, n_starting_candidates=n_results, n_final=15)
@@ -202,7 +205,7 @@ def get_query_reply(user_query, n_results):
         "nas avaliações de clientes fornecidas no contexto abaixo.\n\n"
         "Diretrizes obrigatórias:\n"
         "1. Não invente fatos, opiniões ou dados que não estejam amparados pelas evidências.\n"
-        "2. Sempre cite as evidências correspondentes (ex: citando a Evidência [X], assim como os metadados relevantes no contexto da pergunta) para sustentar seus argumentos.\n"
+        "2. Sempre cite as evidências correspondentes (ex: citando a Evidência [X]) para sustentar seus argumentos.\n"
         "3. Caso as evidências recuperadas sejam insuficientes, inconclusivas ou a pergunta esteja totalmente fora do escopo "
         "da base de conhecimento, responda obrigatoriamente: "
         "'Não possuo informações suficientes nas avaliações de clientes para responder a esta pergunta com segurança.'\n"

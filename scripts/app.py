@@ -30,7 +30,7 @@ if st.button("Executar Consulta", type="primary"):
     if not user_query.strip():
         st.warning("Por favor, digite uma pergunta válida antes de consultar.")
     else:
-        with st.spinner("Processando intenção, buscando evidências e gerando resposta..."):
+        with st.spinner("Buscando evidências e gerando resposta..."):
             try:
                 resposta, fontes = get_query_reply(user_query, n_results=n_results)
             except Exception as e:
