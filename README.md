@@ -60,7 +60,7 @@ O fluxo de funcionamento do assistente é dividido em 6 etapas principais:
         cd scripts/
         python indexing.py
 
-* Exporte o valor da sua chave para API Gemini para variável de ambiente ([Documentação Google AI Studio](https://aistudio.google.com/docs/api-key>)).
+* Exporte o valor da sua chave para API Gemini para variável de ambiente ([Documentação Google AI Studio](https://aistudio.google.com/docs/api-key)).
 
         export GEMINI_API_KEY="SUA-CHAVE"
 
